@@ -1,7 +1,8 @@
 from rest_framework import serializers
 from .models import Profile, WeightStat, FriendRequest, Friendship, Battle, BattleStatistic, BattleInvitation
 from django.contrib.auth.models import User
-from .utils import convert_kg_to_lb, convert_lb_to_kg
+from .utils import convert_kg_to_lb
+from decimal import Decimal
 
 class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
@@ -19,7 +20,7 @@ class WeightStatSerializer(serializers.ModelSerializer):
         model = WeightStat
         fields = ['id', 'date', 'weight', 'bmi', 'body_fat', 'muscle_mass', 'body_water', 'bone_mass']
         read_only_fields = ['date']
-
+    
     def to_representation(self, instance):
         """Convert units in the response based on user's preference."""
         representation = super().to_representation(instance)
@@ -59,11 +60,12 @@ class BattleSerializer(serializers.ModelSerializer):
         model = Battle
         fields = [
             'id', 'name', 'description', 'creator', 'type', 'weight_param', 
-            'goal_value', 'duration', 'is_private', 'status', 'created_at', 
+            'goal_value', 'duration', 'is_private', 'status', 'created_at', 'deleted_at',
             'participants', 'winner_id', 'winner_name'
         ]
-        read_only_fields = ['status', 'created_at', 'participants', 'winner_id', 'winner_name']
+        read_only_fields = ['id', 'status', 'created_at', 'participants', 'winner_id', 'winner_name', 'deleted_at']
 
+  
     def to_representation(self, instance):
         """Convert goal_value based on user's unit preference."""
         representation = super().to_representation(instance)
@@ -73,10 +75,10 @@ class BattleSerializer(serializers.ModelSerializer):
 
         # Convert goal_value to lbs if the user prefers imperial units
         if unit_preference == 'imperial' and instance.weight_param == 'weight':
-            representation['goal_value'] = convert_kg_to_lb(instance.goal_value)
-        elif unit_preference == 'metric' and instance.weight_param == 'weight':
-            # Convert goal_value to kg if stored in lbs
-            representation['goal_value'] = convert_lb_to_kg(instance.goal_value)
+            representation['goal_value'] = Decimal(convert_kg_to_lb(instance.goal_value))
+        elif instance.weight_param == 'weight':
+            # Ensure goal_value is returned as Decimal for metric users
+            representation['goal_value'] = Decimal(instance.goal_value)
 
         return representation
 

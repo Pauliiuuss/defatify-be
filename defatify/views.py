@@ -1,5 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.generics import ListAPIView
+from django.db.models import Count, Q
 from rest_framework import status, generics
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
@@ -13,6 +15,7 @@ from .serializers import ProfileSerializer, WeightStatSerializer, FriendRequestS
 from django.utils.dateparse import parse_date
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 
 # REGISTER
 class RegisterView(APIView):
@@ -216,6 +219,10 @@ class StartBattleView(APIView):
         if battle.creator != request.user:
             return Response({"detail": "You do not have permission to start this battle."},
                             status=status.HTTP_403_FORBIDDEN)
+        
+        # Check if the battle is not deleted
+        if battle.status == 'deleted':
+            return Response({"detail": "This battle has been deleted and cannot be started."}, status=status.HTTP_400_BAD_REQUEST)
 
         # Check if the battle is in "not_started" status
         if battle.status != 'not_started':
@@ -238,6 +245,30 @@ class BattleDetailView(generics.RetrieveAPIView):
         context = super().get_serializer_context()
         context['request'] = self.request
         return context
+    
+# Get top 10 public battles
+class TopPopularBattlesView(ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = BattleSerializer
+
+    def get_queryset(self):
+        # Fetch the top 10 public battles sorted by the number of participants in descending order
+        return Battle.objects.filter(is_private=False).exclude(status__in=['deleted', 'finished']).annotate(
+            participant_count=Count('participants')
+        ).order_by('-participant_count')[:10]
+    
+# Search battle by name
+class BattleSearchView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = BattleSerializer
+    queryset = Battle.objects.filter(is_private=False).exclude(status__in=['deleted', 'finished'])
+
+    def get_queryset(self):
+        query = self.request.query_params.get('query', '')
+        return Battle.objects.filter(
+            Q(name__icontains=query) | Q(description__icontains=query),
+            is_private=False
+        ).exclude(status__in=['deleted', 'finished']).distinct()
 
 #Join a battle
 class BattleJoinView(generics.GenericAPIView):
@@ -245,6 +276,10 @@ class BattleJoinView(generics.GenericAPIView):
 
     def post(self, request, pk):
         battle = get_object_or_404(Battle, id=pk)
+
+        # Check if battle is deleted
+        if battle.status == 'deleted':
+            return Response({"detail": "This battle has been deleted and cannot be joined."}, status=status.HTTP_400_BAD_REQUEST)
 
         # Check if the battle is already finished
         if battle.status == 'finished':
@@ -281,9 +316,60 @@ class BattleLeaveView(generics.GenericAPIView):
 
     def delete(self, request, pk):
         battle = get_object_or_404(Battle, id=pk, participants=request.user)
+        
         battle.participants.remove(request.user)
         BattleStatistic.objects.filter(battle=battle, user=request.user).delete()
         return Response({"detail": "Left the battle."}, status=status.HTTP_204_NO_CONTENT)
+    
+# Soft delete battle
+class BattleSoftDeleteView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, battle_id):
+        battle = Battle.objects.filter(id=battle_id, creator=request.user).first()
+        if not battle:
+            return Response({"detail": "Battle not found or you do not have permission to delete this battle."}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if battle is deleted already
+        if battle.status == 'deleted':
+            return Response({"detail": "This battle has been already deleted."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check if battle is finished
+        if battle.status == 'finished':
+            return Response({"detail": "This battle has finished."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Soft delete: mark status as deleted and set the deleted_at timestamp
+        battle.status = 'deleted'
+        battle.deleted_at = timezone.now()
+        battle.save()
+        
+        return Response({"detail": "Battle marked as deleted."}, status=status.HTTP_200_OK)
+    
+# Update battle
+class BattleUpdateView(generics.UpdateAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = BattleSerializer
+    queryset = Battle.objects.all()
+
+    def put(self, request, *args, **kwargs):
+        battle = self.get_object()
+
+        # Check if battle is deleted
+        if battle.status == 'deleted':
+            return Response({"detail": "This battle has been deleted."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if battle is finished
+        if battle.status == 'finished':
+            return Response({"detail": "This battle has finished."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if battle.status != 'not_started':
+            # Allow only description to be updated once battle is started
+            data = request.data
+            if 'description' not in data or len(data) > 1:
+                return Response({"detail": "Only the description can be updated once the battle has started."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+        return self.update(request, *args, **kwargs, partial=True)
 
 # Leaderboard for a specific battle
 class BattleLeaderboardView(generics.ListAPIView):
@@ -308,6 +394,14 @@ class BattleInviteView(generics.CreateAPIView):
         battle = get_object_or_404(Battle, id=pk)
         invited_user_id = request.data.get('invited_user')
         invited_user = get_object_or_404(User, id=invited_user_id)
+
+        # Check if the invited user is not being invited into deleted battle
+        if battle.status == 'deleted':
+            return Response({"detail": "This battle has been deleted."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check if the invited user is not being invited into finished battle
+        if battle.status == 'finished':
+            return Response({"detail": "This battle has finished."}, status=status.HTTP_400_BAD_REQUEST)
 
         # Check if the invited user is the same as the inviter
         if invited_user == request.user:

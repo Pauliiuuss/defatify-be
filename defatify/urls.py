@@ -19,7 +19,11 @@ from .views import (RegisterView,
                     PendingBattleInvitationsView,
                     AcceptBattleInvitationView,
                     RejectBattleInvitationView,
-                    StartBattleView
+                    StartBattleView,
+                    BattleSoftDeleteView,
+                    BattleUpdateView,
+                    TopPopularBattlesView,
+                    BattleSearchView
                 )
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
@@ -47,4 +51,8 @@ urlpatterns = [
     path('api/battles/invitations/<int:invitation_id>/accept/', AcceptBattleInvitationView.as_view(), name='accept_invitation'),
     path('api/battles/invitations/<int:invitation_id>/reject/', RejectBattleInvitationView.as_view(), name='reject_invitation'),
     path('api/battles/<int:pk>/start/', StartBattleView.as_view(), name='start_battle'),
+    path('api/battles/<int:battle_id>/delete/', BattleSoftDeleteView.as_view(), name='battle_soft_delete'),
+    path('api/battles/<int:pk>/update/', BattleUpdateView.as_view(), name='battle_update'),
+    path('api/battles/popular/', TopPopularBattlesView.as_view(), name='top_popular_battles'),
+    path('api/battles/search/', BattleSearchView.as_view(), name='battle_search'),
 ]

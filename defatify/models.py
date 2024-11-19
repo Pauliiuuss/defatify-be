@@ -17,19 +17,6 @@ class Profile(models.Model):
     def __str__(self):
         return self.user.username
 
-# WEIGHTS MODEL
-# class WeightStat(models.Model):
-#     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='weight_stats')
-#     date = models.DateTimeField(auto_now_add=True)  # Automatically set to current date and time
-#     weight = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
-#     bmi = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
-#     body_fat = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
-#     muscle_mass = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
-#     body_water = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
-#     bone_mass = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
-
-#     def __str__(self):
-#         return f"{self.user.username} - {self.date}"
 class WeightStat(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='weight_stats')
     date = models.DateTimeField(auto_now_add=True)
@@ -87,7 +74,8 @@ class Battle(models.Model):
     STATUS_CHOICES = [
         ('not_started', 'Not Started'),
         ('in_progress', 'In Progress'),
-        ('finished', 'Finished')
+        ('finished', 'Finished'),
+        ('deleted', 'Deleted')
     ]
 
     TYPE_CHOICES = [
@@ -113,6 +101,7 @@ class Battle(models.Model):
     is_private = models.BooleanField(default=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='not_started')
     created_at = models.DateTimeField(auto_now_add=True)
+    deleted_at = models.DateTimeField(blank=True, null=True)
     winner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='won_battles')
 
     def __str__(self):
@@ -122,8 +111,8 @@ class BattleStatistic(models.Model):
     battle = models.ForeignKey(Battle, on_delete=models.CASCADE, related_name="statistics")
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     stat_type = models.CharField(max_length=20)  # E.g., "weight"
-    starting_value = models.DecimalField(max_digits=5, decimal_places=2)
-    current_value = models.DecimalField(max_digits=5, decimal_places=2)
+    starting_value = models.DecimalField(max_digits=5, decimal_places=2, default=0.0)
+    current_value = models.DecimalField(max_digits=5, decimal_places=2, default=0.0)
 
     def __str__(self):
         return f"{self.user.username} - {self.stat_type} in {self.battle.name}"

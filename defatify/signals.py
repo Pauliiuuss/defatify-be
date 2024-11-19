@@ -1,7 +1,7 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.contrib.auth.models import User
-from .models import Profile, WeightStat, BattleStatistic, Battle
+from .models import Profile, WeightStat, BattleStatistic, Battle, BattleInvitation
 from django.utils import timezone
 from datetime import timedelta
 
@@ -64,3 +64,8 @@ def check_battle_completion(sender, instance, **kwargs):
                     battle.winner = top_stat.user
                 battle.status = 'finished'
                 battle.save()
+
+@receiver(post_save, sender=Battle)
+def delete_invitations_on_battle_status_change(sender, instance, **kwargs):
+    if instance.status in ['deleted', 'finished']:
+        BattleInvitation.objects.filter(battle=instance).delete()
